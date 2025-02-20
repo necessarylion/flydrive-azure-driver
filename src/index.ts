@@ -8,7 +8,7 @@ import type {
   SignedURLOptions
 } from 'flydrive/types'
 import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobUploadOptions, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
-import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './interface.js'
+import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
 
