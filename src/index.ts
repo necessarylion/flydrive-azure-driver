@@ -12,7 +12,6 @@ import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFil
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
 
-
 export class AzureDriver implements DriverContract {
   /**
    * Reference to the Azure storage instance
