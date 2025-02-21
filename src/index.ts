@@ -12,6 +12,7 @@ import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFil
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
 
+
 export class AzureDriver implements DriverContract {
   /**
    * Reference to the Azure storage instance
@@ -295,6 +296,19 @@ export class AzureDriver implements DriverContract {
       objects: Iterable<DriveFile | DriveDirectory>
     }> {
     throw new MethodNotImplementedException('listAll')
+  }
+}
+
+// for adonisjs v6
+export function AzureService (config: AzureStorageDriverConfig): {
+  type: 'provider'
+  resolver: () => Promise<() => AzureDriver>
+} {
+  return {
+    type: 'provider',
+    resolver: async () => {
+      return () => new AzureDriver(config)
+    }
   }
 }
 

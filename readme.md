@@ -22,17 +22,7 @@ const driver = new AzureDriver({
 ## AdonisJs V6 Usage
 
 ```ts
-import { ServiceConfigProvider } from '@adonisjs/drive/types'
-import { AzureDriver, AzureStorageDriverConfig } from 'flydrive-azure-driver'
-
-function azureService(config: AzureStorageDriverConfig): ServiceConfigProvider<() => AzureDriver> {
-  return {
-    type: 'provider',
-    resolver: async () => {
-      return () => new AzureDriver(config)
-    },
-  }
-}
+import { AzureService } from 'flydrive-azure'
 
 const driveConfig = defineConfig({
   default: env.get('DRIVE_DISK', 'azure'),
@@ -42,7 +32,7 @@ const driveConfig = defineConfig({
     // other driver config
     ....
 
-    azure: azureService({
+    azure: AzureService({
       connectionString: env.get('AZURE_BLOB_STORAGE_CONN_STRING'),
       container: env.get('AZURE_BLOB_STORAGE_CONTAINER'),
     }),
