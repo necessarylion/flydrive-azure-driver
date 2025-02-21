@@ -1,10 +1,11 @@
-name: Test
+name: Package Publish
 
 on:
-  push:
+  release:
+    types: [created]
 
 jobs:
-  test:
+  publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -13,9 +14,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
-      - name: Eslint
-        run: npm run lint
-      - name: Test
-        run: npm run test
-      - name: Compile and build
+      - name: Build
         run: npm run build
+      - uses: JS-DevTools/npm-publish@v1
+        with:
+          token: ${{ secrets.NPM_TOKEN }}
