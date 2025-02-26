@@ -1,6 +1,6 @@
-# Flydrive Azure Storage Driver
+# Flydrive - Azure Blob Storage Driver
 
-This is a [Flydrive](https://flydrive.dev/) driver for the Azure Storage Service.
+This is a [Flydrive](https://flydrive.dev/) driver for the Azure Blob Storage.
 
 ## Installation
 
