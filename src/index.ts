@@ -200,12 +200,12 @@ export class AzureDriver implements DriverContract {
     throw new CannotSetMetaDataException('Visibility not supported')
   }
 
-   /**
+  /**
    * Update the visibility of the file. Result in a NOOP
    * when the driver does not support the concept of
    * getting signed upload url.
    */
-  async getSignedUploadUrl(key: string, options?: SignedURLOptions): Promise<string> {
+  async getSignedUploadUrl (key: string, options?: SignedURLOptions): Promise<string> {
     throw new CannotSetMetaDataException('getSignedUploadUrl not supported')
   }
 
