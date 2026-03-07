@@ -29,7 +29,7 @@ export class CannotGetMetaDataException extends Error {
 export class CannotSetMetaDataException extends Error {
   constructor (message: string) {
     super(message)
-    this.name = 'CannotGetMetaDataException'
+    this.name = 'CannotSetMetaDataException'
   }
 }
 

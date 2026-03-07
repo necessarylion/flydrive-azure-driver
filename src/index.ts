@@ -60,9 +60,9 @@ export class AzureDriver implements DriverContract {
    * Return a boolean value indicating if the file exists
    * or not.
    */
-  async exists (key: string, optoins?: BlobExistsOptions): Promise<boolean> {
+  async exists (key: string, options?: BlobExistsOptions): Promise<boolean> {
     try {
-      return await this.getBlockBlobClient(key).exists(optoins)
+      return await this.getBlockBlobClient(key).exists(options)
     } catch (error) {
       return false
     }
@@ -304,6 +304,13 @@ export class AzureDriver implements DriverContract {
       objects: Iterable<DriveFile | DriveDirectory>
     }> {
     throw new MethodNotImplementedException('listAll')
+  }
+
+  /**
+   * Switch container (bucket) at runtime.
+   */
+  bucket (bucket: string): AzureDriver {
+    return new AzureDriver({ ...this.config, container: bucket })
   }
 }
 
