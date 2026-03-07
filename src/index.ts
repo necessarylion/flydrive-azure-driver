@@ -201,12 +201,17 @@ export class AzureDriver implements DriverContract {
   }
 
   /**
-   * Update the visibility of the file. Result in a NOOP
-   * when the driver does not support the concept of
-   * getting signed upload url.
+   * Return a signed URL with write permissions for uploading a file.
+   * Uses 'cw' (create + write) permissions by default.
    */
   async getSignedUploadUrl (key: string, options?: SignedURLOptions): Promise<string> {
-    throw new CannotSetMetaDataException('getSignedUploadUrl not supported')
+    const blockBlobClient = this.getBlockBlobClient(key)
+    if (!this.config.container) throw new Error('Container is not set')
+    return await this.generateBlobSASURL(blockBlobClient, {
+      containerName: this.config.container,
+      permissions: BlobSASPermissions.parse('cw'),
+      ...options
+    })
   }
 
   /**
@@ -286,7 +291,15 @@ export class AzureDriver implements DriverContract {
    * if the folder does not exist or is empty.
    */
   async deleteAll (prefix: string): Promise<void> {
-    throw new MethodNotImplementedException('deleteAll')
+    const container = this.config.container
+    if (!container) throw new Error('Container is not set')
+
+    const containerClient = this.adapter.getContainerClient(container)
+    const normalizedPrefix = `${prefix.replace(/\/$/, '')}/`
+
+    for await (const blob of containerClient.listBlobsFlat({ prefix: normalizedPrefix })) {
+      await containerClient.getBlockBlobClient(blob.name).delete()
+    }
   }
 
   /**
@@ -329,7 +342,7 @@ export class AzureDriver implements DriverContract {
       const page = response.value
       nextMarker = page.continuationToken
       for (const blob of page.segment.blobItems) {
-        files.push(new DriveFile(blob.name, this, {
+        files.push(new DriveFile(blob.name as string, this, {
           contentType: blob.properties.contentType,
           contentLength: blob.properties.contentLength ?? 0,
           etag: blob.properties.etag ?? '',
@@ -343,10 +356,10 @@ export class AzureDriver implements DriverContract {
       const page = response.value
       nextMarker = page.continuationToken
       for (const prefixItem of page.segment.blobPrefixes ?? []) {
-        directories.push(new DriveDirectory(prefixItem.name.replace(/\/$/, '')))
+        directories.push(new DriveDirectory((prefixItem.name as string).replace(/\/$/, '')))
       }
       for (const blob of page.segment.blobItems) {
-        files.push(new DriveFile(blob.name, this, {
+        files.push(new DriveFile(blob.name as string, this, {
           contentType: blob.properties.contentType,
           contentLength: blob.properties.contentLength ?? 0,
           etag: blob.properties.etag ?? '',
