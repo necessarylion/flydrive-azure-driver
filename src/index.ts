@@ -1,5 +1,5 @@
 import { type Readable } from 'node:stream'
-import { type DriveFile, type DriveDirectory } from 'flydrive'
+import { DriveFile, DriveDirectory } from 'flydrive'
 import type {
   WriteOptions,
   DriverContract,
@@ -292,6 +292,11 @@ export class AzureDriver implements DriverContract {
   /**
    * List all files from a given folder or the root of the storage.
    * Do not throw an error if the request folder does not exist.
+   *
+   * @param prefix - The folder path to list files from. Use '/' or '' for root.
+   * @param options.recursive - When true, lists all blobs under the prefix including nested folders (flat list).
+   *   When false (default), lists only the immediate children (files and subdirectories) of the prefix.
+   * @param options.paginationToken - A continuation token from a previous `listAll` call to fetch the next page of results.
    */
   async listAll (
     prefix: string,
@@ -303,7 +308,62 @@ export class AzureDriver implements DriverContract {
       paginationToken?: string
       objects: Iterable<DriveFile | DriveDirectory>
     }> {
-    throw new MethodNotImplementedException('listAll')
+    const container = this.config.container
+    if (!container) throw new Error('Container is not set')
+
+    const containerClient = this.adapter.getContainerClient(container)
+    const { recursive = false, paginationToken } = options ?? {}
+
+    const normalizedPrefix = prefix && prefix !== '/'
+      ? recursive ? prefix : `${prefix.replace(/\/$/, '')}/`
+      : ''
+
+    const files: DriveFile[] = []
+    const directories: DriveDirectory[] = []
+    let nextMarker: string | undefined
+
+    if (recursive) {
+      const iter = containerClient.listBlobsFlat({ prefix: normalizedPrefix || undefined })
+        .byPage({ continuationToken: paginationToken, maxPageSize: 1000 })
+      const response = await iter.next()
+      const page = response.value
+      nextMarker = page.continuationToken
+      for (const blob of page.segment.blobItems) {
+        files.push(new DriveFile(blob.name, this, {
+          contentType: blob.properties.contentType,
+          contentLength: blob.properties.contentLength ?? 0,
+          etag: blob.properties.etag ?? '',
+          lastModified: blob.properties.lastModified ?? new Date()
+        }))
+      }
+    } else {
+      const iter = containerClient.listBlobsByHierarchy('/', { prefix: normalizedPrefix || undefined })
+        .byPage({ continuationToken: paginationToken, maxPageSize: 1000 })
+      const response = await iter.next()
+      const page = response.value
+      nextMarker = page.continuationToken
+      for (const prefixItem of page.segment.blobPrefixes ?? []) {
+        directories.push(new DriveDirectory(prefixItem.name.replace(/\/$/, '')))
+      }
+      for (const blob of page.segment.blobItems) {
+        files.push(new DriveFile(blob.name, this, {
+          contentType: blob.properties.contentType,
+          contentLength: blob.properties.contentLength ?? 0,
+          etag: blob.properties.etag ?? '',
+          lastModified: blob.properties.lastModified ?? new Date()
+        }))
+      }
+    }
+
+    function * filesGenerator (): Generator<DriveFile | DriveDirectory> {
+      for (const dir of directories) yield dir
+      for (const file of files) yield file
+    }
+
+    return {
+      paginationToken: nextMarker,
+      objects: { [Symbol.iterator]: filesGenerator }
+    }
   }
 
   /**
