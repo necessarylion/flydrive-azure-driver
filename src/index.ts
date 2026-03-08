@@ -7,7 +7,7 @@ import type {
   ObjectVisibility,
   SignedURLOptions
 } from 'flydrive/types'
-import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobUploadOptions, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
+import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
 import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
@@ -222,6 +222,74 @@ export class AzureDriver implements DriverContract {
     const blockBlobClient = this.getBlockBlobClient(key)
     try {
       await blockBlobClient.upload(contents, contents.length, options)
+    } catch (error) {
+      throw new CannotWriteFileException(key, error)
+    }
+  }
+
+  /**
+   * Stage a block (chunk) for later committing. Each block is identified
+   * by a blockId which must be a base64-encoded string of consistent length.
+   *
+   * @param key - The blob name/path in the container.
+   * @param blockId - A base64-encoded string that identifies the block. All blockIds for the same blob must have the same length.
+   * @param contents - The block content to upload.
+   * @param contentLength - The byte length of the content.
+   * @param options - Optional parameters for the stage block operation.
+   *
+   * @example
+   * ```typescript
+   * import { Buffer } from 'node:buffer'
+   *
+   * const blockId1 = Buffer.from('00001').toString('base64')
+   * const blockId2 = Buffer.from('00002').toString('base64')
+   *
+   * await driver.putBlock('large-file.zip', blockId1, chunk1, chunk1.length)
+   * await driver.putBlock('large-file.zip', blockId2, chunk2, chunk2.length)
+   *
+   * // After all chunks are uploaded, commit them
+   * await driver.commitBlockList('large-file.zip', [blockId1, blockId2])
+   * ```
+   */
+  async putBlock (key: string, blockId: string, contents: HttpRequestBody, contentLength: number, options?: BlockBlobStageBlockOptions): Promise<void> {
+    const blockBlobClient = this.getBlockBlobClient(key)
+    try {
+      await blockBlobClient.stageBlock(blockId, contents, contentLength, options)
+    } catch (error) {
+      throw new CannotWriteFileException(key, error)
+    }
+  }
+
+  /**
+   * Commit previously staged blocks into a single blob.
+   * The blockIds must be in the order you want the final blob assembled.
+   *
+   * @param key - The blob name/path in the container.
+   * @param blockIds - An array of base64-encoded block IDs to commit, in the desired order.
+   * @param options - Optional parameters such as blobHTTPHeaders for setting content type.
+   *
+   * @example
+   * ```typescript
+   * import { Buffer } from 'node:buffer'
+   *
+   * const blockIds = []
+   * const chunkSize = 4 * 1024 * 1024 // 4MB per chunk
+   *
+   * for (let i = 0; i < chunks.length; i++) {
+   *   const blockId = Buffer.from(String(i).padStart(5, '0')).toString('base64')
+   *   await driver.putBlock('video.mp4', blockId, chunks[i], chunks[i].length)
+   *   blockIds.push(blockId)
+   * }
+   *
+   * await driver.commitBlockList('video.mp4', blockIds, {
+   *   blobHTTPHeaders: { blobContentType: 'video/mp4' }
+   * })
+   * ```
+   */
+  async commitBlockList (key: string, blockIds: string[], options?: BlockBlobCommitBlockListOptions): Promise<void> {
+    const blockBlobClient = this.getBlockBlobClient(key)
+    try {
+      await blockBlobClient.commitBlockList(blockIds, options)
     } catch (error) {
       throw new CannotWriteFileException(key, error)
     }
