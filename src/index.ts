@@ -7,7 +7,7 @@ import type {
   ObjectVisibility,
   SignedURLOptions
 } from 'flydrive/types'
-import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
+import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, type UserDelegationKey, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
 import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
@@ -19,6 +19,12 @@ export class AzureDriver implements DriverContract {
   public adapter: BlobServiceClient
 
   /**
+   * Whether the client was constructed with a TokenCredential (e.g. DefaultAzureCredential)
+   * rather than StorageSharedKeyCredential.
+   */
+  private readonly useTokenCredential: boolean
+
+  /**
    * Constructor
    * @param {AzureStorageDriverConfig} config - The configuration for the Azure storage driver
    */
@@ -28,6 +34,7 @@ export class AzureDriver implements DriverContract {
       this.adapter = BlobServiceClient.fromConnectionString(
         config.connectionString
       )
+      this.useTokenCredential = false
     } else {
       // eslint-disable-next-line no-undef-init
       let credential: StorageSharedKeyCredential | DefaultAzureCredential | undefined = undefined
@@ -36,6 +43,8 @@ export class AzureDriver implements DriverContract {
       } else if (config.name && config.key) {
         credential = new StorageSharedKeyCredential(config.name, config.key)
       }
+
+      this.useTokenCredential = credential instanceof DefaultAzureCredential
 
       let url = `https://${this.config.name}.blob.core.windows.net`
 
@@ -177,16 +186,31 @@ export class AzureDriver implements DriverContract {
     options.startsOn = options.startsOn ?? new Date()
     options.expiresOn = options.expiresOn ?? new Date(options.startsOn.valueOf() + 3600 * 1000)
 
-    const blobSAS = generateBlobSASQueryParameters(
-      {
-        containerName: blockBlobClient.containerName, // Required
-        blobName: blockBlobClient.name, // Required
-        permissions: options.permissions, // Required
-        startsOn: options.startsOn,
-        expiresOn: options.expiresOn
-      },
-      blockBlobClient.credential as StorageSharedKeyCredential
-    )
+    const sasValues = {
+      containerName: blockBlobClient.containerName,
+      blobName: blockBlobClient.name,
+      permissions: options.permissions,
+      startsOn: options.startsOn,
+      expiresOn: options.expiresOn
+    }
+
+    let blobSAS
+    if (this.useTokenCredential) {
+      const userDelegationKey = await this.adapter.getUserDelegationKey(
+        options.startsOn!,
+        options.expiresOn!
+      )
+      blobSAS = generateBlobSASQueryParameters(
+        sasValues,
+        userDelegationKey,
+        this.adapter.accountName
+      )
+    } else {
+      blobSAS = generateBlobSASQueryParameters(
+        sasValues,
+        blockBlobClient.credential as StorageSharedKeyCredential
+      )
+    }
 
     return `${blockBlobClient.url}?${blobSAS.toString()}`
   }
@@ -363,9 +387,11 @@ export class AzureDriver implements DriverContract {
     if (!container) throw new Error('Container is not set')
 
     const containerClient = this.adapter.getContainerClient(container)
-    const normalizedPrefix = `${prefix.replace(/\/$/, '')}/`
+    const normalizedPrefix = prefix && prefix !== '/'
+      ? `${prefix.replace(/\/$/, '')}/`
+      : ''
 
-    for await (const blob of containerClient.listBlobsFlat({ prefix: normalizedPrefix })) {
+    for await (const blob of containerClient.listBlobsFlat({ prefix: normalizedPrefix || undefined })) {
       await containerClient.getBlockBlobClient(blob.name).delete()
     }
   }
@@ -396,7 +422,7 @@ export class AzureDriver implements DriverContract {
     const { recursive = false, paginationToken } = options ?? {}
 
     const normalizedPrefix = prefix && prefix !== '/'
-      ? recursive ? prefix : `${prefix.replace(/\/$/, '')}/`
+      ? `${prefix.replace(/\/$/, '')}/`
       : ''
 
     const files: DriveFile[] = []
