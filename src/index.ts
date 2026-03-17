@@ -7,7 +7,7 @@ import type {
   ObjectVisibility,
   SignedURLOptions
 } from 'flydrive/types'
-import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, type UserDelegationKey, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
+import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
 import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
@@ -197,8 +197,8 @@ export class AzureDriver implements DriverContract {
     let blobSAS
     if (this.useTokenCredential) {
       const userDelegationKey = await this.adapter.getUserDelegationKey(
-        options.startsOn!,
-        options.expiresOn!
+        options.startsOn,
+        options.expiresOn
       )
       blobSAS = generateBlobSASQueryParameters(
         sasValues,
