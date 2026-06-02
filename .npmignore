@@ -1,6 +1,14 @@
 src
-package-lock.json
-node_modules
-.github
 __tests__
+node_modules
+package-lock.json
+.github
+.env
+.env.example
+.claude
+.vscode
+.eslintrc.cjs
+jest.config.js
+tsconfig.json
+.nvmrc
 !dist
