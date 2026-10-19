@@ -7,7 +7,7 @@ package-lock.json
 .env.example
 .claude
 .vscode
-eslint.config.js
+biome.json
 tsconfig.json
 .nvmrc
 !dist

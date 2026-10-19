@@ -1,18 +1,44 @@
-import { type Readable } from 'node:stream'
-import { DriveFile, DriveDirectory, errors } from 'flydrive'
+import type { Readable } from 'node:stream'
+import { buffer } from 'node:stream/consumers'
+import { DefaultAzureCredential } from '@azure/identity'
+import {
+  type BlobDownloadOptions,
+  type BlobDownloadToBufferOptions,
+  type BlobExistsOptions,
+  BlobSASPermissions,
+  type BlobSASSignatureValues,
+  BlobServiceClient,
+  type BlockBlobClient,
+  type BlockBlobCommitBlockListOptions,
+  type BlockBlobStageBlockOptions,
+  type BlockBlobUploadOptions,
+  generateBlobSASQueryParameters,
+  type HttpRequestBody,
+  newPipeline,
+  type SASQueryParameters,
+  StorageSharedKeyCredential
+} from '@azure/storage-blob'
+import { DriveDirectory, DriveFile, errors } from 'flydrive'
 import type {
-  ReadOptions,
-  RangeRequest,
   CopyMoveOptions,
   DriverContract,
   ObjectMetaData,
   ObjectVisibility,
+  RangeRequest,
+  ReadOptions,
   SignedURLOptions
 } from 'flydrive/types'
-import { type BlobDownloadOptions, type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
-import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
-import { DefaultAzureCredential } from '@azure/identity'
-import { buffer } from 'node:stream/consumers'
+import {
+  type AzureStorageDriverConfig,
+  CannotCopyFileException,
+  CannotDeleteFileException,
+  CannotGetMetaDataException,
+  CannotMoveFileException,
+  CannotSetMetaDataException,
+  CannotWriteFileException,
+  FileNotFoundException,
+  MethodNotImplementedException
+} from './types.js'
 
 export class AzureDriver implements DriverContract {
   /**
@@ -30,16 +56,22 @@ export class AzureDriver implements DriverContract {
    * Constructor
    * @param {AzureStorageDriverConfig} config - The configuration for the Azure storage driver
    */
-  constructor (private readonly config: AzureStorageDriverConfig) {
+  constructor(private readonly config: AzureStorageDriverConfig) {
     if (typeof config.connectionString !== 'undefined') {
       this.adapter = BlobServiceClient.fromConnectionString(
         config.connectionString
       )
       this.useTokenCredential = false
     } else {
-      // eslint-disable-next-line no-undef-init
-      let credential: StorageSharedKeyCredential | DefaultAzureCredential | undefined = undefined
-      if (config.azureTenantId && config.azureClientId && config.azureClientSecret) {
+      let credential:
+        | StorageSharedKeyCredential
+        | DefaultAzureCredential
+        | undefined
+      if (
+        config.azureTenantId &&
+        config.azureClientId &&
+        config.azureClientSecret
+      ) {
         credential = new DefaultAzureCredential()
       } else if (config.name && config.key) {
         credential = new StorageSharedKeyCredential(config.name, config.key)
@@ -59,7 +91,7 @@ export class AzureDriver implements DriverContract {
     }
   }
 
-  private getBlockBlobClient (location: string): BlockBlobClient {
+  private getBlockBlobClient(location: string): BlockBlobClient {
     const container = this.config.container
     if (!container) throw new Error('Container is not set')
     const containerClient = this.adapter.getContainerClient(container)
@@ -70,14 +102,23 @@ export class AzureDriver implements DriverContract {
    * Convert a flydrive inclusive byte range into the Azure
    * offset/count pair. A count of undefined reads till the end.
    */
-  private resolveRange (key: string, range?: RangeRequest): { offset: number, count?: number } {
-    if (range === undefined || (range.start === undefined && range.end === undefined)) {
+  private resolveRange(
+    key: string,
+    range?: RangeRequest
+  ): { offset: number; count?: number } {
+    if (
+      range === undefined ||
+      (range.start === undefined && range.end === undefined)
+    ) {
       return { offset: 0 }
     }
     const { start, end } = range
-    if (start !== undefined && (!Number.isInteger(start) || start < 0)) throw new errors.E_RANGE_UNSATISFIABLE([key])
-    if (end !== undefined && (!Number.isInteger(end) || end < 0)) throw new errors.E_RANGE_UNSATISFIABLE([key])
-    if (start !== undefined && end !== undefined && start > end) throw new errors.E_RANGE_UNSATISFIABLE([key])
+    if (start !== undefined && (!Number.isInteger(start) || start < 0))
+      throw new errors.E_RANGE_UNSATISFIABLE([key])
+    if (end !== undefined && (!Number.isInteger(end) || end < 0))
+      throw new errors.E_RANGE_UNSATISFIABLE([key])
+    if (start !== undefined && end !== undefined && start > end)
+      throw new errors.E_RANGE_UNSATISFIABLE([key])
 
     const offset = start ?? 0
     return { offset, count: end !== undefined ? end - offset + 1 : undefined }
@@ -87,10 +128,10 @@ export class AzureDriver implements DriverContract {
    * Return a boolean value indicating if the file exists
    * or not.
    */
-  async exists (key: string, options?: BlobExistsOptions): Promise<boolean> {
+  async exists(key: string, options?: BlobExistsOptions): Promise<boolean> {
     try {
       return await this.getBlockBlobClient(key).exists(options)
-    } catch (error) {
+    } catch {
       return false
     }
   }
@@ -99,7 +140,10 @@ export class AzureDriver implements DriverContract {
    * Return the file contents as a UTF-8 string. Throw an exception
    * if the file is missing.
    */
-  async get (key: string, options?: BlobDownloadToBufferOptions): Promise<string> {
+  async get(
+    key: string,
+    options?: BlobDownloadToBufferOptions
+  ): Promise<string> {
     try {
       const blockBlobClient = this.getBlockBlobClient(key)
       const res = await blockBlobClient.downloadToBuffer(0, 0, options)
@@ -114,11 +158,18 @@ export class AzureDriver implements DriverContract {
    * if the file is missing. When a range is provided, only the
    * specified bytes are streamed.
    */
-  async getStream (key: string, options?: ReadOptions & BlobDownloadOptions): Promise<Readable> {
+  async getStream(
+    key: string,
+    options?: ReadOptions & BlobDownloadOptions
+  ): Promise<Readable> {
     const { range, ...downloadOptions } = options ?? {}
     const { offset, count } = this.resolveRange(key, range)
     try {
-      const res = await this.getBlockBlobClient(key).download(offset, count, downloadOptions)
+      const res = await this.getBlockBlobClient(key).download(
+        offset,
+        count,
+        downloadOptions
+      )
       return res.readableStreamBody as Readable
     } catch (error) {
       throw new FileNotFoundException(key, error)
@@ -130,11 +181,18 @@ export class AzureDriver implements DriverContract {
    * if the file is missing. When a range is provided, only the
    * specified bytes are returned.
    */
-  async getBytes (key: string, options?: ReadOptions & BlobDownloadOptions): Promise<Uint8Array> {
+  async getBytes(
+    key: string,
+    options?: ReadOptions & BlobDownloadOptions
+  ): Promise<Uint8Array> {
     const { range, ...downloadOptions } = options ?? {}
     const { offset, count } = this.resolveRange(key, range)
     try {
-      const res = await this.getBlockBlobClient(key).download(offset, count, downloadOptions)
+      const res = await this.getBlockBlobClient(key).download(
+        offset,
+        count,
+        downloadOptions
+      )
       if (!res.readableStreamBody) throw new FileNotFoundException(key)
       const buf = await buffer(res.readableStreamBody)
       return new Uint8Array(buf)
@@ -147,7 +205,7 @@ export class AzureDriver implements DriverContract {
    * Return metadata of the file. Throw an exception
    * if the file is missing.
    */
-  async getMetaData (key: string): Promise<ObjectMetaData> {
+  async getMetaData(key: string): Promise<ObjectMetaData> {
     try {
       const blockBlobClient = this.getBlockBlobClient(key)
       const metaData = await blockBlobClient.getProperties()
@@ -166,7 +224,7 @@ export class AzureDriver implements DriverContract {
    * Return visibility of the file. Infer visibility from the initial
    * config, when the driver does not support the concept of visibility.
    */
-  async getVisibility (key: string): Promise<ObjectVisibility> {
+  async getVisibility(_key: string): Promise<ObjectVisibility> {
     // ponytail: Azure sets access per container, not per blob, so the config value is the answer
     return this.config.visibility ?? 'private'
   }
@@ -175,7 +233,7 @@ export class AzureDriver implements DriverContract {
    * Return the public URL of the file. Throw an exception when the driver
    * does not support generating URLs.
    */
-  async getUrl (key: string): Promise<string> {
+  async getUrl(key: string): Promise<string> {
     return this.getBlockBlobClient(key).url
   }
 
@@ -183,7 +241,7 @@ export class AzureDriver implements DriverContract {
    * Return the signed URL to serve a private file. Throw exception
    * when the driver does not support generating URLs.
    */
-  async getSignedUrl (key: string, options?: SignedURLOptions): Promise<string> {
+  async getSignedUrl(key: string, options?: SignedURLOptions): Promise<string> {
     const blockBlobClient = this.getBlockBlobClient(key)
     if (!this.config.container) throw new Error('Container is not set')
     const SASUrl = await this.generateBlobSASURL(blockBlobClient, {
@@ -199,17 +257,19 @@ export class AzureDriver implements DriverContract {
    * @param options - The options for the signed URL.
    * @returns The signed URL.
    */
-  private async generateBlobSASURL (
+  private async generateBlobSASURL(
     blockBlobClient: BlockBlobClient,
     options: BlobSASSignatureValues
   ): Promise<string> {
     options.permissions =
-      options.permissions === undefined || typeof options.permissions === 'string'
+      options.permissions === undefined ||
+      typeof options.permissions === 'string'
         ? BlobSASPermissions.parse(options.permissions ?? 'r')
         : options.permissions
 
     options.startsOn = options.startsOn ?? new Date()
-    options.expiresOn = options.expiresOn ?? new Date(options.startsOn.valueOf() + 3600 * 1000)
+    options.expiresOn =
+      options.expiresOn ?? new Date(options.startsOn.valueOf() + 3600 * 1000)
 
     const sasValues = {
       containerName: blockBlobClient.containerName,
@@ -219,7 +279,7 @@ export class AzureDriver implements DriverContract {
       expiresOn: options.expiresOn
     }
 
-    let blobSAS
+    let blobSAS: SASQueryParameters
     if (this.useTokenCredential) {
       const userDelegationKey = await this.adapter.getUserDelegationKey(
         options.startsOn,
@@ -245,13 +305,19 @@ export class AzureDriver implements DriverContract {
    * when the driver does not support the concept of
    * visibility.
    */
-  async setVisibility (key: string, visibility: ObjectVisibility): Promise<void> {}
+  async setVisibility(
+    _key: string,
+    _visibility: ObjectVisibility
+  ): Promise<void> {}
 
   /**
    * Return a signed URL with write permissions for uploading a file.
    * Uses 'cw' (create + write) permissions by default.
    */
-  async getSignedUploadUrl (key: string, options?: SignedURLOptions): Promise<string> {
+  async getSignedUploadUrl(
+    key: string,
+    options?: SignedURLOptions
+  ): Promise<string> {
     const blockBlobClient = this.getBlockBlobClient(key)
     if (!this.config.container) throw new Error('Container is not set')
     return await this.generateBlobSASURL(blockBlobClient, {
@@ -265,7 +331,11 @@ export class AzureDriver implements DriverContract {
    * Create a new file or update an existing file. The contents
    * will be a UTF-8 string or "Uint8Array".
    */
-  async put (key: string, contents: string | Uint8Array, options?: BlockBlobUploadOptions): Promise<void> {
+  async put(
+    key: string,
+    contents: string | Uint8Array,
+    options?: BlockBlobUploadOptions
+  ): Promise<void> {
     const blockBlobClient = this.getBlockBlobClient(key)
     try {
       await blockBlobClient.upload(contents, contents.length, options)
@@ -298,10 +368,21 @@ export class AzureDriver implements DriverContract {
    * await driver.commitBlockList('large-file.zip', [blockId1, blockId2])
    * ```
    */
-  async putBlock (key: string, blockId: string, contents: HttpRequestBody, contentLength: number, options?: BlockBlobStageBlockOptions): Promise<void> {
+  async putBlock(
+    key: string,
+    blockId: string,
+    contents: HttpRequestBody,
+    contentLength: number,
+    options?: BlockBlobStageBlockOptions
+  ): Promise<void> {
     const blockBlobClient = this.getBlockBlobClient(key)
     try {
-      await blockBlobClient.stageBlock(blockId, contents, contentLength, options)
+      await blockBlobClient.stageBlock(
+        blockId,
+        contents,
+        contentLength,
+        options
+      )
     } catch (error) {
       throw new CannotWriteFileException(key, error)
     }
@@ -333,7 +414,11 @@ export class AzureDriver implements DriverContract {
    * })
    * ```
    */
-  async commitBlockList (key: string, blockIds: string[], options?: BlockBlobCommitBlockListOptions): Promise<void> {
+  async commitBlockList(
+    key: string,
+    blockIds: string[],
+    options?: BlockBlobCommitBlockListOptions
+  ): Promise<void> {
     const blockBlobClient = this.getBlockBlobClient(key)
     try {
       await blockBlobClient.commitBlockList(blockIds, options)
@@ -346,10 +431,19 @@ export class AzureDriver implements DriverContract {
    * Create a new file or update an existing file. The contents
    * will be a Readable stream.
    */
-  async putStream (key: string, contents: Readable, options?: BlockBlobUploadOptions): Promise<void> {
+  async putStream(
+    key: string,
+    contents: Readable,
+    options?: BlockBlobUploadOptions
+  ): Promise<void> {
     const blockBlobClient = this.getBlockBlobClient(key)
     try {
-      await blockBlobClient.uploadStream(contents, undefined, undefined, options)
+      await blockBlobClient.uploadStream(
+        contents,
+        undefined,
+        undefined,
+        options
+      )
     } catch (error) {
       throw new CannotWriteFileException(key, error)
     }
@@ -362,12 +456,18 @@ export class AzureDriver implements DriverContract {
    *
    * Use the "destinationBucket" option to copy the file to a different container.
    */
-  async copy (source: string, destination: string, options?: CopyMoveOptions): Promise<void> {
+  async copy(
+    source: string,
+    destination: string,
+    options?: CopyMoveOptions
+  ): Promise<void> {
     if (!this.config.container) throw new Error('Container is not set')
     const { destinationBucket, ...writeOptions } = options ?? {}
     const sourceBlockBlobClient = this.getBlockBlobClient(source)
     const destinationBlockBlobClient = destinationBucket
-      ? this.adapter.getContainerClient(destinationBucket).getBlockBlobClient(destination)
+      ? this.adapter
+          .getContainerClient(destinationBucket)
+          .getBlockBlobClient(destination)
       : this.getBlockBlobClient(destination)
     const url = await this.generateBlobSASURL(sourceBlockBlobClient, {
       containerName: this.config.container,
@@ -387,7 +487,11 @@ export class AzureDriver implements DriverContract {
    *
    * Use the "destinationBucket" option to move the file to a different container.
    */
-  async move (source: string, destination: string, options?: CopyMoveOptions): Promise<void> {
+  async move(
+    source: string,
+    destination: string,
+    options?: CopyMoveOptions
+  ): Promise<void> {
     try {
       await this.copy(source, destination, options)
       await this.delete(source)
@@ -400,7 +504,7 @@ export class AzureDriver implements DriverContract {
    * Delete an existing file. Do not throw an error if the
    * file is already missing
    */
-  async delete (key: string): Promise<void> {
+  async delete(key: string): Promise<void> {
     try {
       await this.getBlockBlobClient(key).delete()
     } catch (error) {
@@ -412,16 +516,17 @@ export class AzureDriver implements DriverContract {
    * Delete all files inside a folder. Do not throw an error
    * if the folder does not exist or is empty.
    */
-  async deleteAll (prefix: string): Promise<void> {
+  async deleteAll(prefix: string): Promise<void> {
     const container = this.config.container
     if (!container) throw new Error('Container is not set')
 
     const containerClient = this.adapter.getContainerClient(container)
-    const normalizedPrefix = prefix && prefix !== '/'
-      ? `${prefix.replace(/\/$/, '')}/`
-      : ''
+    const normalizedPrefix =
+      prefix && prefix !== '/' ? `${prefix.replace(/\/$/, '')}/` : ''
 
-    for await (const blob of containerClient.listBlobsFlat({ prefix: normalizedPrefix || undefined })) {
+    for await (const blob of containerClient.listBlobsFlat({
+      prefix: normalizedPrefix || undefined
+    })) {
       await containerClient.getBlockBlobClient(blob.name).delete()
     }
   }
@@ -435,7 +540,7 @@ export class AzureDriver implements DriverContract {
    *   When false (default), lists only the immediate children (files and subdirectories) of the prefix.
    * @param options.paginationToken - A continuation token from a previous `listAll` call to fetch the next page of results.
    */
-  async listAll (
+  async listAll(
     prefix: string,
     options?: {
       recursive?: boolean
@@ -451,48 +556,55 @@ export class AzureDriver implements DriverContract {
     const containerClient = this.adapter.getContainerClient(container)
     const { recursive = false, paginationToken } = options ?? {}
 
-    const normalizedPrefix = prefix && prefix !== '/'
-      ? `${prefix.replace(/\/$/, '')}/`
-      : ''
+    const normalizedPrefix =
+      prefix && prefix !== '/' ? `${prefix.replace(/\/$/, '')}/` : ''
 
     const files: DriveFile[] = []
     const directories: DriveDirectory[] = []
     let nextMarker: string | undefined
 
     if (recursive) {
-      const iter = containerClient.listBlobsFlat({ prefix: normalizedPrefix || undefined })
+      const iter = containerClient
+        .listBlobsFlat({ prefix: normalizedPrefix || undefined })
         .byPage({ continuationToken: paginationToken, maxPageSize: 1000 })
       const response = await iter.next()
       const page = response.value
       nextMarker = page.continuationToken
       for (const blob of page.segment.blobItems) {
-        files.push(new DriveFile(blob.name as string, this, {
-          contentType: blob.properties.contentType,
-          contentLength: blob.properties.contentLength ?? 0,
-          etag: blob.properties.etag ?? '',
-          lastModified: blob.properties.lastModified ?? new Date()
-        }))
+        files.push(
+          new DriveFile(blob.name as string, this, {
+            contentType: blob.properties.contentType,
+            contentLength: blob.properties.contentLength ?? 0,
+            etag: blob.properties.etag ?? '',
+            lastModified: blob.properties.lastModified ?? new Date()
+          })
+        )
       }
     } else {
-      const iter = containerClient.listBlobsByHierarchy('/', { prefix: normalizedPrefix || undefined })
+      const iter = containerClient
+        .listBlobsByHierarchy('/', { prefix: normalizedPrefix || undefined })
         .byPage({ continuationToken: paginationToken, maxPageSize: 1000 })
       const response = await iter.next()
       const page = response.value
       nextMarker = page.continuationToken
       for (const prefixItem of page.segment.blobPrefixes ?? []) {
-        directories.push(new DriveDirectory((prefixItem.name as string).replace(/\/$/, '')))
+        directories.push(
+          new DriveDirectory((prefixItem.name as string).replace(/\/$/, ''))
+        )
       }
       for (const blob of page.segment.blobItems) {
-        files.push(new DriveFile(blob.name as string, this, {
-          contentType: blob.properties.contentType,
-          contentLength: blob.properties.contentLength ?? 0,
-          etag: blob.properties.etag ?? '',
-          lastModified: blob.properties.lastModified ?? new Date()
-        }))
+        files.push(
+          new DriveFile(blob.name as string, this, {
+            contentType: blob.properties.contentType,
+            contentLength: blob.properties.contentLength ?? 0,
+            etag: blob.properties.etag ?? '',
+            lastModified: blob.properties.lastModified ?? new Date()
+          })
+        )
       }
     }
 
-    function * filesGenerator (): Generator<DriveFile | DriveDirectory> {
+    function* filesGenerator(): Generator<DriveFile | DriveDirectory> {
       for (const dir of directories) yield dir
       for (const file of files) yield file
     }
@@ -506,13 +618,13 @@ export class AzureDriver implements DriverContract {
   /**
    * Switch container (bucket) at runtime.
    */
-  bucket (bucket: string): AzureDriver {
+  bucket(bucket: string): AzureDriver {
     return new AzureDriver({ ...this.config, container: bucket })
   }
 }
 
 // for adonisjs v6
-export function AzureService (config: AzureStorageDriverConfig): {
+export function AzureService(config: AzureStorageDriverConfig): {
   type: 'provider'
   resolver: () => Promise<() => AzureDriver>
 } {
@@ -525,5 +637,13 @@ export function AzureService (config: AzureStorageDriverConfig): {
 }
 
 export {
-  type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException
+  type AzureStorageDriverConfig,
+  CannotCopyFileException,
+  CannotDeleteFileException,
+  CannotGetMetaDataException,
+  CannotMoveFileException,
+  CannotSetMetaDataException,
+  CannotWriteFileException,
+  FileNotFoundException,
+  MethodNotImplementedException
 }
