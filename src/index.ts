@@ -167,7 +167,8 @@ export class AzureDriver implements DriverContract {
    * config, when the driver does not support the concept of visibility.
    */
   async getVisibility (key: string): Promise<ObjectVisibility> {
-    throw new CannotGetMetaDataException('Visibility not supported')
+    // ponytail: Azure sets access per container, not per blob, so the config value is the answer
+    return this.config.visibility ?? 'private'
   }
 
   /**
@@ -244,9 +245,7 @@ export class AzureDriver implements DriverContract {
    * when the driver does not support the concept of
    * visibility.
    */
-  async setVisibility (key: string, visibility: ObjectVisibility): Promise<void> {
-    throw new CannotSetMetaDataException('Visibility not supported')
-  }
+  async setVisibility (key: string, visibility: ObjectVisibility): Promise<void> {}
 
   /**
    * Return a signed URL with write permissions for uploading a file.
