@@ -77,6 +77,40 @@ describe('Azure file storage driver', () => {
     expect(res2).toBe(false)
   })
 
+  it('getStream (range)', async () => {
+    await driver.put(`${PREFIX}/range.txt`, 'hello world')
+    const res = await driver.getStream(`${PREFIX}/range.txt`, { range: { start: 6, end: 10 } })
+    expect(await text(res)).toBe('world')
+
+    const res2 = await driver.getStream(`${PREFIX}/range.txt`, { range: { start: 6 } })
+    expect(await text(res2)).toBe('world')
+
+    await driver.delete(`${PREFIX}/range.txt`)
+  })
+
+  it('getBytes (range)', async () => {
+    await driver.put(`${PREFIX}/range.txt`, 'hello world')
+    const res = await driver.getBytes(`${PREFIX}/range.txt`, { range: { end: 4 } })
+    expect(new TextDecoder().decode(res)).toBe('hello')
+
+    await expect(driver.getBytes(`${PREFIX}/range.txt`, { range: { start: 5, end: 2 } }))
+      .rejects.toThrow()
+
+    await driver.delete(`${PREFIX}/range.txt`)
+  })
+
+  it('copy|move (destinationBucket)', async () => {
+    await driver.put(`${PREFIX}/copy.txt`, 'copy me')
+    await driver.copy(`${PREFIX}/copy.txt`, `${PREFIX}/copied.txt`)
+    expect(await driver.get(`${PREFIX}/copied.txt`)).toBe('copy me')
+
+    await driver.move(`${PREFIX}/copied.txt`, `${PREFIX}/moved.txt`, {
+      destinationBucket: AZURE_BLOB_STORAGE_CONTAINER
+    })
+    expect(await driver.exists(`${PREFIX}/copied.txt`)).toBe(false)
+    expect(await driver.get(`${PREFIX}/moved.txt`)).toBe('copy me')
+  })
+
   it('getSignedUrl', async () => {
     await driver.putStream(`${PREFIX}/test.txt`, Readable.from('hello world'))
     const url = await driver.getSignedUrl(`${PREFIX}/test.txt`)

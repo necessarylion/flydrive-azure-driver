@@ -1,13 +1,15 @@
 import { type Readable } from 'node:stream'
-import { DriveFile, DriveDirectory } from 'flydrive'
+import { DriveFile, DriveDirectory, errors } from 'flydrive'
 import type {
-  WriteOptions,
+  ReadOptions,
+  RangeRequest,
+  CopyMoveOptions,
   DriverContract,
   ObjectMetaData,
   ObjectVisibility,
   SignedURLOptions
 } from 'flydrive/types'
-import { type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
+import { type BlobDownloadOptions, type BlobDownloadToBufferOptions, type BlobExistsOptions, BlobSASPermissions, type BlobSASSignatureValues, BlobServiceClient, type BlockBlobClient, type BlockBlobCommitBlockListOptions, type BlockBlobStageBlockOptions, type BlockBlobUploadOptions, type HttpRequestBody, generateBlobSASQueryParameters, newPipeline, StorageSharedKeyCredential } from '@azure/storage-blob'
 import { type AzureStorageDriverConfig, CannotCopyFileException, CannotDeleteFileException, CannotGetMetaDataException, CannotMoveFileException, CannotSetMetaDataException, CannotWriteFileException, FileNotFoundException, MethodNotImplementedException } from './types.js'
 import { DefaultAzureCredential } from '@azure/identity'
 import { buffer } from 'node:stream/consumers'
@@ -66,6 +68,23 @@ export class AzureDriver implements DriverContract {
   }
 
   /**
+   * Convert a flydrive inclusive byte range into the Azure
+   * offset/count pair. A count of undefined reads till the end.
+   */
+  private resolveRange (key: string, range?: RangeRequest): { offset: number, count?: number } {
+    if (range === undefined || (range.start === undefined && range.end === undefined)) {
+      return { offset: 0 }
+    }
+    const { start, end } = range
+    if (start !== undefined && (!Number.isInteger(start) || start < 0)) throw new errors.E_RANGE_UNSATISFIABLE([key])
+    if (end !== undefined && (!Number.isInteger(end) || end < 0)) throw new errors.E_RANGE_UNSATISFIABLE([key])
+    if (start !== undefined && end !== undefined && start > end) throw new errors.E_RANGE_UNSATISFIABLE([key])
+
+    const offset = start ?? 0
+    return { offset, count: end !== undefined ? end - offset + 1 : undefined }
+  }
+
+  /**
    * Return a boolean value indicating if the file exists
    * or not.
    */
@@ -93,11 +112,14 @@ export class AzureDriver implements DriverContract {
 
   /**
    * Return the file contents as a Readable stream. Throw an exception
-   * if the file is missing.
+   * if the file is missing. When a range is provided, only the
+   * specified bytes are streamed.
    */
-  async getStream (key: string, options?: BlobDownloadToBufferOptions): Promise<Readable> {
+  async getStream (key: string, options?: ReadOptions & BlobDownloadOptions): Promise<Readable> {
+    const { range, ...downloadOptions } = options ?? {}
+    const { offset, count } = this.resolveRange(key, range)
     try {
-      const res = await this.getBlockBlobClient(key).download(0, 0, options)
+      const res = await this.getBlockBlobClient(key).download(offset, count, downloadOptions)
       return res.readableStreamBody as Readable
     } catch (error) {
       throw new FileNotFoundException(key, error)
@@ -106,11 +128,14 @@ export class AzureDriver implements DriverContract {
 
   /**
    * Return the file contents as a Uint8Array. Throw an exception
-   * if the file is missing.
+   * if the file is missing. When a range is provided, only the
+   * specified bytes are returned.
    */
-  async getBytes (key: string, options?: BlobDownloadToBufferOptions): Promise<Uint8Array> {
+  async getBytes (key: string, options?: ReadOptions & BlobDownloadOptions): Promise<Uint8Array> {
+    const { range, ...downloadOptions } = options ?? {}
+    const { offset, count } = this.resolveRange(key, range)
     try {
-      const res = await this.getBlockBlobClient(key).download(0, 0, options)
+      const res = await this.getBlockBlobClient(key).download(offset, count, downloadOptions)
       if (!res.readableStreamBody) throw new FileNotFoundException(key)
       const buf = await buffer(res.readableStreamBody)
       return new Uint8Array(buf)
@@ -336,14 +361,19 @@ export class AzureDriver implements DriverContract {
    * Copy the existing file to the destination. Make sure the new file
    * has the same visibility as the existing file. It might require
    * manually fetching the visibility of the "source" file.
+   *
+   * Use the "destinationBucket" option to copy the file to a different container.
    */
-  async copy (source: string, destination: string, options?: WriteOptions): Promise<void> {
+  async copy (source: string, destination: string, options?: CopyMoveOptions): Promise<void> {
     if (!this.config.container) throw new Error('Container is not set')
+    const { destinationBucket, ...writeOptions } = options ?? {}
     const sourceBlockBlobClient = this.getBlockBlobClient(source)
-    const destinationBlockBlobClient = this.getBlockBlobClient(destination)
+    const destinationBlockBlobClient = destinationBucket
+      ? this.adapter.getContainerClient(destinationBucket).getBlockBlobClient(destination)
+      : this.getBlockBlobClient(destination)
     const url = await this.generateBlobSASURL(sourceBlockBlobClient, {
       containerName: this.config.container,
-      ...options
+      ...writeOptions
     })
     try {
       await destinationBlockBlobClient.syncCopyFromURL(url)
@@ -356,8 +386,10 @@ export class AzureDriver implements DriverContract {
    * Move the existing file to the destination. Make sure the new file
    * has the same visibility as the existing file. It might require
    * manually fetching the visibility of the "source" file.
+   *
+   * Use the "destinationBucket" option to move the file to a different container.
    */
-  async move (source: string, destination: string, options?: WriteOptions): Promise<void> {
+  async move (source: string, destination: string, options?: CopyMoveOptions): Promise<void> {
     try {
       await this.copy(source, destination, options)
       await this.delete(source)
