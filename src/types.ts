@@ -1,4 +1,5 @@
 import { type CommonOptions } from '@azure/storage-blob'
+import type { ObjectVisibility } from 'flydrive/types'
 
 export type AzureStorageDriverConfig = CommonOptions & {
   connectionString?: string
@@ -9,6 +10,11 @@ export type AzureStorageDriverConfig = CommonOptions & {
   key?: string
   localAddress?: string
   container?: string
+  /**
+   * Visibility returned by getVisibility. Azure sets access per container,
+   * so set this to match your container. Defaults to 'private'.
+   */
+  visibility?: ObjectVisibility
 }
 
 export class FileNotFoundException extends Error {
