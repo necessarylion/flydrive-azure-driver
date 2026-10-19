@@ -32,7 +32,6 @@ export class AzureDriver implements DriverContract {
    */
   constructor (private readonly config: AzureStorageDriverConfig) {
     if (typeof config.connectionString !== 'undefined') {
-      // eslint-disable-next-line
       this.adapter = BlobServiceClient.fromConnectionString(
         config.connectionString
       )
@@ -444,9 +443,9 @@ export class AzureDriver implements DriverContract {
       paginationToken?: string
     }
   ): Promise<{
-      paginationToken?: string
-      objects: Iterable<DriveFile | DriveDirectory>
-    }> {
+    paginationToken?: string
+    objects: Iterable<DriveFile | DriveDirectory>
+  }> {
     const container = this.config.container
     if (!container) throw new Error('Container is not set')
 
