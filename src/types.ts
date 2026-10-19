@@ -1,4 +1,4 @@
-import { type CommonOptions } from '@azure/storage-blob'
+import type { CommonOptions } from '@azure/storage-blob'
 import type { ObjectVisibility } from 'flydrive/types'
 
 export type AzureStorageDriverConfig = CommonOptions & {
@@ -18,7 +18,7 @@ export type AzureStorageDriverConfig = CommonOptions & {
 }
 
 export class FileNotFoundException extends Error {
-  constructor (message: string, error?: unknown) {
+  constructor(message: string, error?: unknown) {
     super(message)
     this.name = 'FileNotFoundException'
     this.cause = error
@@ -26,28 +26,28 @@ export class FileNotFoundException extends Error {
 }
 
 export class CannotGetMetaDataException extends Error {
-  constructor (message: string) {
+  constructor(message: string) {
     super(message)
     this.name = 'CannotGetMetaDataException'
   }
 }
 
 export class CannotSetMetaDataException extends Error {
-  constructor (message: string) {
+  constructor(message: string) {
     super(message)
     this.name = 'CannotSetMetaDataException'
   }
 }
 
 export class MethodNotImplementedException extends Error {
-  constructor (message: string) {
+  constructor(message: string) {
     super(message)
     this.name = 'MethodNotImplementedException'
   }
 }
 
 export class CannotWriteFileException extends Error {
-  constructor (message: string, error: unknown) {
+  constructor(message: string, error: unknown) {
     super(message)
     this.name = 'CannotWriteFileException'
     this.cause = error
@@ -55,7 +55,7 @@ export class CannotWriteFileException extends Error {
 }
 
 export class CannotCopyFileException extends Error {
-  constructor (message: string, error: unknown) {
+  constructor(message: string, error: unknown) {
     super(message)
     this.name = 'CannotCopyFileException'
     this.cause = error
@@ -63,7 +63,7 @@ export class CannotCopyFileException extends Error {
 }
 
 export class CannotDeleteFileException extends Error {
-  constructor (message: string, error: unknown) {
+  constructor(message: string, error: unknown) {
     super(message)
     this.name = 'CannotDeleteFileException'
     this.cause = error
@@ -71,7 +71,7 @@ export class CannotDeleteFileException extends Error {
 }
 
 export class CannotMoveFileException extends Error {
-  constructor (message: string, error: unknown) {
+  constructor(message: string, error: unknown) {
     super(message)
     this.name = 'CannotMoveFileException'
     this.cause = error
