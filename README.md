@@ -39,3 +39,25 @@ const driveConfig = defineConfig({
   },
 })
 ```
+
+## Signed upload URLs
+
+`getSignedUploadUrl` gives a URL that a client, for example a browser, can use to upload a file directly to Azure.
+
+The client must send the header `x-ms-blob-type: BlockBlob` with the `PUT` request. Azure needs this header to know the blob type. If the header is not there, Azure refuses the upload with status `400`.
+
+```ts
+const url = await drive.use('azure').getSignedUploadUrl('avatars/1.png')
+
+// In the client
+await fetch(url, {
+  method: 'PUT',
+  headers: {
+    'x-ms-blob-type': 'BlockBlob',
+    'Content-Type': file.type,
+  },
+  body: file,
+})
+```
+
+The signed URL does not control the `Content-Type` of the file. The `Content-Type` header of the client request sets the content type of the blob.
